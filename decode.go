@@ -14,7 +14,7 @@ func Unmarshal(b []byte, v interface{}) error {
 	return decodeValue(b, v)
 }
 
-func decodeValue(b []byte, v interface{}) (err error) {
+func decodeValue(b []byte, v interface{}) error {
 	value := reflect.ValueOf(v)
 
 	if unmarshaler, ok := value.Interface().(encoding.BinaryUnmarshaler); ok {
@@ -57,8 +57,20 @@ func decodeValue(b []byte, v interface{}) (err error) {
 		value.SetUint(tmp)
 	case reflect.String:
 		value.SetString(string(b))
+	case reflect.Ptr:
+		if value.IsNil() {
+			value.Set(reflect.New(value.Type().Elem()))
+		}
+		if err := decodeValue(b, value.Interface()); err != nil {
+			return err
+		}
 	case reflect.Struct:
-		tlvFragment, _ := parseTLV(b)
+		var tlvFragment fragments
+		if tlvFragmentTmp, err := parseTLV(b); err != nil {
+			return err
+		} else {
+			tlvFragment = tlvFragmentTmp
+		}
 		for i := 0; i < value.NumField(); i++ {
 			fieldValue := value.Field(i)
 			fieldType := valueType.Field(i)
@@ -82,6 +94,7 @@ func decodeValue(b []byte, v interface{}) (err error) {
 			} else if fieldValue.Kind() == reflect.Slice && fieldValue.IsNil() {
 				fieldValue.Set(reflect.MakeSlice(fieldValue.Type(), 0, 1))
 			}
+
 			for _, buf := range tlvFragment[tagVal] {
 				if fieldValue.Kind() != reflect.Ptr {
 					fieldValue = fieldValue.Addr()
@@ -93,11 +106,17 @@ func decodeValue(b []byte, v interface{}) (err error) {
 			}
 		}
 	case reflect.Slice:
+		if value.IsNil() {
+			value.Set(reflect.MakeSlice(value.Type(), 0, 1))
+		}
 		if valueType.Elem().Kind() == reflect.Uint8 {
 			value.SetBytes(b)
-		} else if valueType.Elem().Kind() == reflect.Ptr || valueType.Elem().Kind() == reflect.Struct || isNumber(valueType.Elem()) {
+		} else if valueType.Elem().Kind() == reflect.Ptr || valueType.Elem().Kind() == reflect.Struct ||
+			isNumber(valueType.Elem()) {
 			elemValue := reflect.New(valueType.Elem())
-			_ = decodeValue(b, elemValue.Interface())
+			if err := decodeValue(b, elemValue.Interface()); err != nil {
+				return err
+			}
 			value.Set(reflect.Append(value, elemValue.Elem()))
 		} else {
 			return errors.New("value type `Slice of " + valueType.String() + "` is not support decode")
