@@ -26,34 +26,34 @@ func decodeValue(b []byte, v interface{}) error {
 	valueType := reflect.TypeOf(value.Interface())
 	switch value.Kind() {
 	case reflect.Int8:
-		var tmp = int64(int8(b[0]))
+		tmp := int64(int8(b[0]))
 		value.SetInt(tmp)
 	case reflect.Int16:
-		var tmp = int64(int16(binary.BigEndian.Uint16(b)))
+		tmp := int64(int16(binary.BigEndian.Uint16(b)))
 		value.SetInt(tmp)
 	case reflect.Int32:
-		var tmp = int64(int32(binary.BigEndian.Uint32(b)))
+		tmp := int64(int32(binary.BigEndian.Uint32(b)))
 		value.SetInt(tmp)
 	case reflect.Int64:
-		var tmp = int64(binary.BigEndian.Uint64(b))
+		tmp := int64(binary.BigEndian.Uint64(b))
 		value.SetInt(tmp)
 	case reflect.Int:
-		var tmp = int64(binary.BigEndian.Uint64(b))
+		tmp := int64(binary.BigEndian.Uint64(b))
 		value.SetInt(tmp)
 	case reflect.Uint8:
-		var tmp = uint64(b[0])
+		tmp := uint64(b[0])
 		value.SetUint(tmp)
 	case reflect.Uint16:
-		var tmp = uint64(binary.BigEndian.Uint16(b))
+		tmp := uint64(binary.BigEndian.Uint16(b))
 		value.SetUint(tmp)
 	case reflect.Uint32:
-		var tmp = uint64(binary.BigEndian.Uint32(b))
+		tmp := uint64(binary.BigEndian.Uint32(b))
 		value.SetUint(tmp)
 	case reflect.Uint64:
-		var tmp = binary.BigEndian.Uint64(b)
+		tmp := binary.BigEndian.Uint64(b)
 		value.SetUint(tmp)
 	case reflect.Uint:
-		var tmp = binary.BigEndian.Uint64(b)
+		tmp := binary.BigEndian.Uint64(b)
 		value.SetUint(tmp)
 	case reflect.String:
 		value.SetString(string(b))
