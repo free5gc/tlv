@@ -4,6 +4,8 @@ import (
 	"reflect"
 )
 
+func ref[T any](v T) *T { return &v }
+
 func isNumber(typ reflect.Type) bool {
 	switch typ.Kind() {
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
