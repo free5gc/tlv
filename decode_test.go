@@ -82,7 +82,12 @@ func TestUnmarshalErrors(t *testing.T) {
 		target any
 		bytes  []byte
 	}{
+		{name: "eof tag", target: &tOkayish{}, bytes: unhex("FF")},
+		{name: "eof len", target: &tOkayish{}, bytes: unhex("FFFFFF")},
 		{name: "eof value", target: &tOkayish{}, bytes: unhex("FFFFFFFF")},
+		{name: "nil", target: nil, bytes: bytesOkayish},
+		{name: "non-pointer", target: "not a pointer", bytes: bytesOkayish},
+		{name: "unsupported type", target: ref(make(chan any)), bytes: bytesOkayish},
 		{name: "unsupported slice type", target: &tSliceUnsupported{}, bytes: bytesOkayish},
 		{name: "field unexported", target: &struct{ v customMarshal }{}, bytes: bytesOkayish},
 		{name: "field missing tlv", target: &struct{ V customMarshal }{}, bytes: bytesOkayish},
@@ -97,41 +102,6 @@ func TestUnmarshalErrors(t *testing.T) {
 			err := Unmarshal(tc.bytes, tc.target)
 			t.Log(err)
 			require.Error(t, err)
-		})
-	}
-
-	panicCases := []struct {
-		name   string
-		target any
-		bytes  []byte
-	}{
-		{name: "nil", target: nil, bytes: bytesOkayish},
-		{name: "non-pointer", target: "not a pointer", bytes: bytesOkayish},
-	}
-
-	for _, tc := range panicCases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Panics(t, func() {
-				_ = Unmarshal(tc.bytes, tc.target)
-			})
-		})
-	}
-
-	// swallows an error, prints to console for some
-	swallowedCases := []struct {
-		name   string
-		target any
-		bytes  []byte
-	}{
-		{name: "eof tag", target: &tOkayish{}, bytes: unhex("FF")},
-		{name: "eof len", target: &tOkayish{}, bytes: unhex("FFFFFF")},
-		{name: "unsupported type", target: ref(make(chan any)), bytes: bytesOkayish},
-	}
-
-	for _, tc := range swallowedCases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := Unmarshal(tc.bytes, tc.target)
-			require.NoError(t, err)
 		})
 	}
 }
