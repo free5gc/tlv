@@ -1,7 +1,7 @@
 package tlv
 
 import (
-	"encoding/hex"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -9,94 +9,99 @@ import (
 )
 
 func TestUnmarshal(t *testing.T) {
-	testCases := []struct {
-		name     string
-		instance interface{}
-		inputHex string
+	moreCases := append(cases, []struct {
+		name    string
+		decoded any
+		encoded []byte
 	}{
 		{
-			name: "int64",
-			instance: struct {
-				Value int64 `tlv:"30"`
-			}{Value: 32324},
-			inputHex: "001E00080000000000007E44",
+			name:    "unexpected tlvs",
+			decoded: tpointer{Optional: &customMarshal{Value: []byte("Hello?")}},
+			encoded: unhex("DEAD0002CAFE0071000648656C6C6F3FCAFE0002DEAD"),
 		},
-		{
-			name: "int32",
-			instance: struct {
-				Value int32 `tlv:"31"`
-			}{Value: 32324},
-			inputHex: "001F000400007E44",
-		},
-		{
-			name: "int16",
-			instance: struct {
-				Value int16 `tlv:"32"`
-			}{Value: 32324},
-			inputHex: "002000027E44",
-		},
-		{
-			name: "int8",
-			instance: struct {
-				Value int8 `tlv:"33"`
-			}{Value: 68},
-			inputHex: "0021000144",
-		},
-		{
-			name: "slice of struct",
-			instance: struct {
-				List []struct {
-					Name     []byte `tlv:"20"`
-					Sequence uint16 `tlv:"40"`
-				} `tlv:"80"`
-			}{
-				List: []struct {
-					Name     []byte `tlv:"20"`
-					Sequence uint16 `tlv:"40"`
-				}{
-					{Name: []byte("Hello"), Sequence: 1},
-					{Name: []byte("World"), Sequence: 2},
-					{Name: []byte("free5gc"), Sequence: 3},
-				},
-			},
-			inputHex: "0050000F0014000548656C6C6F002800020001" +
-				"0050000F00140005576F726C64002800020002" +
-				"005000110014000766726565356763002800020003",
-		},
-		{
-			name: "slice of binary",
-			instance: struct {
-				List []BinaryMarshalTest `tlv:"123"`
-			}{
-				List: []BinaryMarshalTest{
-					{
-						Value: 1100,
-					},
-					{
-						Value: 1200,
-					},
-					{
-						Value: 3244,
-					},
-				},
-			},
-			inputHex: "007B000431313030007B000431323030007B000433323434",
-		},
-	}
+	}...)
 
-	for _, tc := range testCases {
+	for _, tc := range moreCases {
 		t.Run(tc.name, func(t *testing.T) {
-			instanceType := reflect.TypeOf(tc.instance)
+			// create a new empty instance of the same type
+			instanceType := reflect.TypeOf(tc.decoded)
 			testInstance := reflect.New(instanceType).Interface()
 
-			buf, err := hex.DecodeString(tc.inputHex)
-			require.NoError(t, err)
-			err = Unmarshal(buf, testInstance)
+			err := Unmarshal(tc.encoded, testInstance)
 			require.NoError(t, err)
 
-			// dereference the interface
+			// dereference and compare to original
 			testInstance = reflect.ValueOf(testInstance).Elem().Interface()
-			require.Equal(t, tc.instance, testInstance)
+			require.Equal(t, tc.decoded, testInstance)
+		})
+	}
+}
+
+func BenchmarkUnmarshal(b *testing.B) {
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		decoded := reflect.New(reflect.TypeOf(cases[i%len(cases)].decoded)).Interface()
+		if err := Unmarshal(cases[i%len(cases)].encoded, decoded); err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+type tBrokenUnmarshal struct{}
+
+func (t tBrokenUnmarshal) UnmarshalBinary(_ []byte) error { return errors.New("irreparably broken") }
+
+type tOkayish struct {
+	V *customMarshal `tlv:"1"`
+}
+type tSliceUnsupported struct {
+	V []chan any `tlv:"1"`
+}
+type tMalformedTLV1 struct {
+	V *customMarshal `tlv:"NaN"`
+}
+type tMalformedTLV2 struct {
+	V *customMarshal `tlv:"65555"`
+}
+type tNested struct {
+	V1 *tNested1 `tlv:"1"`
+}
+type tNested1 struct {
+	V2 []*tNested2 `tlv:"2"`
+}
+type tNested2 struct {
+	V3 *tBrokenUnmarshal `tlv:"3"`
+}
+
+func TestUnmarshalErrors(t *testing.T) {
+	bytesOkayish := unhex("00010001FFFFFF")
+
+	cases := []struct {
+		name   string
+		target any
+		bytes  []byte
+	}{
+		{name: "eof tag", target: &tOkayish{}, bytes: unhex("FF")},
+		{name: "eof len", target: &tOkayish{}, bytes: unhex("FFFFFF")},
+		{name: "eof value", target: &tOkayish{}, bytes: unhex("FFFFFFFF")},
+		{name: "nil", target: nil, bytes: bytesOkayish},
+		{name: "non-pointer", target: "not a pointer", bytes: bytesOkayish},
+		{name: "unsupported type", target: ref(make(chan any)), bytes: bytesOkayish},
+		{name: "unsupported slice type", target: &tSliceUnsupported{}, bytes: bytesOkayish},
+		{name: "field unexported", target: &struct{ v customMarshal }{}, bytes: bytesOkayish},
+		{name: "field missing tlv", target: &struct{ V customMarshal }{}, bytes: bytesOkayish},
+		{name: "field malformed tlv 1", target: &tMalformedTLV1{}, bytes: bytesOkayish},
+		{name: "field malformed tlv 2", target: &tMalformedTLV2{}, bytes: bytesOkayish},
+		{name: "nested error", target: &tNested{}, bytes: unhex("000100090002000500030001FF")},
+		//{name: "unexpected tlv", target: &tOkayish{}, bytes: unhex("DEAD0001FF")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Unmarshal(tc.bytes, tc.target)
+			t.Log(err)
+			require.Error(t, err)
 		})
 	}
 }
