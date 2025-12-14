@@ -1,6 +1,6 @@
 module github.com/free5gc/tlv
 
-go 1.25
+go 1.25.5
 
 require github.com/stretchr/testify v1.8.3
 
